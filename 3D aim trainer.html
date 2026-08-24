@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Aim Trainer · FPS</title>
+    <style>
+        /* === RESET & BASE === */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #0a0e27;
+            color: #a0c4ff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            user-select: none;
+        }
+
+        #game-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0a0e27;
+            cursor: none;
+        }
+        #game-container canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* === CROSSHAIR (CSS overlay) === */
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 20;
+            opacity: 0.9;
+        }
+        #crosshair::before,
+        #crosshair::after {
+            content: '';
+            position: absolute;
+            background: #00ff66;
+        }
+        #crosshair::before {
+            width: 2px;
+            height: 20px;
+            top: -10px;
+            left: -1px;
+        }
+        #crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: -1px;
+            left: -10px;
+        }
+        #crosshair .dot {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #00ff66;
+            border-radius: 50%;
+            top: -2px;
+            left: -2px;
+        }
+        /* outer ring */
+        #crosshair .ring {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 1px solid rgba(0, 255, 102, 0.25);
+            border-radius: 50%;
+            top: -15px;
+            left: -15px;
+        }
+
+        /* === OVERLAYS === */
+        #countdown-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            pointer-events: none;
+        }
+        #countdown-overlay.show {
+            display: flex;
+        }
+        .countdown-text {
+            font-size: 120px;
+            font-weight: bold;
+            color: #4da6ff;
+            text-shadow: 0 0 40px rgba(77, 166, 255, 0.5);
+            animation: pulse 0.5s ease;
+        }
+        @keyframes pulse {
+            0% {
+                transform: scale(0.5);
+                opacity: 0;
+            }
+            50% {
+                transform: scale(1.2);
+            }
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+
+        #stats-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(10, 14, 39, 0.92);
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            padding: 20px;
+        }
+        #stats-overlay.show {
+            display: flex;
+        }
+        .stats-title {
+            font-size: 28px;
+            color: #4da6ff;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            max-width: 600px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #0d1133;
+            border: 1px solid #1a3a6e;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: #7aa8e0;
+            text-transform: uppercase;
+        }
+        .stat-value {
+            font-size: 20px;
+            color: #4da6ff;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+        .rank-display {
+            font-size: 36px;
+            margin: 16px 0;
+            text-align: center;
+        }
+        .rank-title {
+            font-size: 14px;
+            color: #7aa8e0;
+        }
+
+        /* === CONTROL PANEL === */
+        #control-panel {
+            background: #0d1133;
+            border-top: 2px solid #1a3a6e;
+            padding: 8px 16px;
+            display: flex;
+            gap: 0;
+            align-items: flex-start;
+            justify-content: center;
+            flex-wrap: wrap;
+            min-height: 120px;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+            z-index: 10;
+            position: relative;
+        }
+        #control-panel.collapsed {
+            min-height: 45px;
+            padding: 4px 16px;
+        }
+        .panel-section {
+            padding: 0 14px;
+            border-right: 1px solid #1a3a6e;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 180px;
+        }
+        .panel-section:last-child {
+            border-right: none;
+        }
+        .panel-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            min-height: 26px;
+        }
+        .panel-row label {
+            font-size: 11px;
+            color: #7aa8e0;
+            min-width: 70px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .panel-row select,
+        .panel-row input[type="range"] {
+            flex: 1;
+            background: #1a2550;
+            border: 1px solid #2a4a8e;
+            color: #a0c4ff;
+            border-radius: 4px;
+            font-size: 11px;
+            padding: 2px 6px;
+            height: 22px;
+        }
+        .panel-row input[type="range"] {
+            padding: 0;
+            height: 16px;
+        }
+        .panel-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4da6ff;
+        }
+        .range-value {
+            font-size: 11px;
+            color: #4da6ff;
+            min-width: 28px;
+            text-align: right;
+        }
+        .btn {
+            background: #1a3a6e;
+            border: 1px solid #2a5aaa;
+            color: #a0c4ff;
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+            height: 26px;
+            white-space: nowrap;
+        }
+        .btn:hover {
+            background: #2a5aaa;
+            color: #fff;
+        }
+        .btn.primary {
+            background: #0d5a3b;
+            border-color: #1a8a5a;
+        }
+        .btn.primary:hover {
+            background: #1a8a5a;
+        }
+        .btn.danger {
+            background: #5a1a1a;
+            border-color: #8a2a2a;
+        }
+        .btn.danger:hover {
+            background: #8a2a2a;
+        }
+        .btn.active {
+            background: #2a5aaa;
+            color: #fff;
+        }
+        .info-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #4da6ff;
+        }
+        
+        /* === NEW TIMER STYLE === */
+        .timer-display {
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffcc00;
+            font-family: monospace;
+            margin-left: 12px;
+            text-shadow: 0 0 10px rgba(255, 204, 0, 0.4);
+            min-width: 60px;
+            text-align: center;
+            display: inline-block;
+        }
+        .hidden {
+            display: none !important;
+        }
+
+        /* pointer lock hint */
+        #lock-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(160, 196, 255, 0.5);
+            font-size: 18px;
+            pointer-events: none;
+            z-index: 15;
+            text-align: center;
+            letter-spacing: 1px;
+            transition: opacity 0.6s;
+        }
+        #lock-hint.hidden {
+            opacity: 0;
+        }
+
+        @media (max-width: 900px) {
+            .panel-section {
+                min-width: 140px;
+                padding: 0 8px;
+            }
+            .panel-row label {
+                min-width: 50px;
+                font-size: 10px;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (max-width: 600px) {
+            .panel-section {
+                min-width: 100%;
+                border-right: none;
+                border-bottom: 1px solid #1a3a6e;
+                padding: 4px 0;
+            }
+            #control-panel {
+                min-height: 160px;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ===== GAME CONTAINER ===== -->
+    <div id="game-container">
+        <!-- Three.js renderer will be inserted here -->
+
+        <!-- Crosshair -->
+        <div id="crosshair">
+            <div class="ring"></div>
+            <div class="dot"></div>
+        </div>
+
+        <!-- Lock hint -->
+        <div id="lock-hint">🖱 Кликните, чтобы захватить курсор</div>
+
+        <!-- Countdown -->
+        <div id="countdown-overlay">
+            <div class="countdown-text" id="countdown-text">3</div>
+        </div>
+
+        <!-- Stats -->
+        <div id="stats-overlay">
+            <div class="stats-title">Результаты</div>
+            <div class="stats-grid" id="stats-grid"></div>
+            <div class="rank-display" id="rank-display"></div>
+            <button class="btn primary" onclick="closeStats()">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- ===== CONTROL PANEL ===== -->
+    <div id="control-panel">
+        <div class="panel-section" id="section1">
+            <div class="panel-row">
+                <label>Режим</label>
+                <select id="modeSelect">
+                    <option value="gridshot">GridShot</option>
+                    <option value="tracking">Tracking</option>
+                    <option value="moving">Moving</option>
+                </select>
+            </div>
+            <div class="panel-row">
+                <label>Размер</label>
+                <input type="range" id="sizeSlider" min="5" max="30" value="15" />
+                <span class="range-value" id="sizeValue">30</span>
+            </div>
+            <div class="panel-row">
+                <label>Скорость</label>
+                <input type="range" id="speedSlider" min="1" max="20" value="5" />
+                <span class="range-value" id="speedValue">5</span>
+            </div>
+            <div class="panel-row" id="wobbleRow">
+                <label>Вихляние</label>
+                <input type="range" id="wobbleSlider" min="0" max="10" value="2" />
+                <span class="range-value" id="wobbleValue">2</span>
+            </div>
+            <div class="panel-row" id="countRow">
+                <label>Количество</label>
+                <input type="range" id="countSlider" min="1" max="15" value="5" />
+                <span class="range-value" id="countValue">5</span>
+            </div>
+        </div>
+
+        <div class="panel-section" id="section2">
+            <div class="panel-row">
+                <label>Длительность</label>
+                <input type="range" id="durationSlider" min="30" max="180" value="60" step="10" />
+                <span class="range-value" id="durationValue">60</span>
+            </div>
+            <div class="panel-row">
+                <label>Сложность</label>
+                <select id="difficultySelect">
+                    <option value="novice">Новичок</option>
+                    <option value="medium" selected>Средний</option>
+                    <option value="expert">Эксперт</option>
+                    <option value="pro">Профи</option>
+                </select>
+            </div>
+            <div class="panel-row">
+                <label>Эффекты</label>
+                <select id="effectSelect">
+                    <option value="glow">Glow</option>
+                    <option value="particles">Particles</option>
+                    <option value="ring">Ring</option>
+                    <option value="burst">Burst</option>
+                    <option value="sparks">Sparks</option>
+                    <option value="none">None</option>
+                </select>
+            </div>
+            <div class="panel-row">
+                <label>Trail</label>
+                <input type="checkbox" id="trailCheck" />
+            </div>
+        </div>
+
+        <div class="panel-section" id="section3">
+            <div class="panel-row"><label>Время</label><span class="info-value" id="infoTime">60.0</span></div>
+            <div class="panel-row"><label>Счет</label><span class="info-value" id="infoScore">0</span></div>
+            <div class="panel-row"><label>Точность</label><span class="info-value" id="infoAccuracy">100%</span></div>
+            <div class="panel-row"><label>Серия</label><span class="info-value" id="infoCombo">0</span></div>
+        </div>
+
+        <div class="panel-section" id="section4">
+            <div class="panel-row" style="gap:6px;flex-wrap:wrap;">
+                <button class="btn primary" id="startBtn" onclick="startGame()">Старт</button>
+                <button class="btn danger" id="stopBtn" onclick="stopGame()">Стоп</button>
+                <button class="btn" id="pauseBtn" onclick="togglePause()">Пауза</button>
+                <button class="btn" onclick="toggleFullscreen()">Полный экран</button>
+                <button class="btn" id="soundBtn" onclick="toggleSound()">Звук: Вкл</button>
+                <button class="btn" id="menuBtn" onclick="toggleMenu()">Меню</button>
+                
+                <!-- NEW TIMER DISPLAY -->
+                <span id="game-timer" class="timer-display hidden">01:00</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== THREE.JS IMPORTS ===== -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // ====================================================================
+        //  IMPORTS
+        // ====================================================================
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+        // ====================================================================
+        //  DOM REFS
+        // ====================================================================
+        const container = document.getElementById('game-container');
+        const lockHint = document.getElementById('lock-hint');
+        const countdownOverlay = document.getElementById('countdown-overlay');
+        const countdownText = document.getElementById('countdown-text');
+        const statsOverlay = document.getElementById('stats-overlay');
+        const statsGrid = document.getElementById('stats-grid');
+        const rankDisplay = document.getElementById('rank-display');
+
+        const infoTime = document.getElementById('infoTime');
+        const infoScore = document.getElementById('infoScore');
+        const infoAccuracy = document.getElementById('infoAccuracy');
+        const infoCombo = document.getElementById('infoCombo');
+        const gameTimerDisplay = document.getElementById('game-timer'); // NEW REF
+
+        const modeSelect = document.getElementById('modeSelect');
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeValue = document.getElementById('sizeValue');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const wobbleSlider = document.getElementById('wobbleSlider');
+        const wobbleValue = document.getElementById('wobbleValue');
+        const countSlider = document.getElementById('countSlider');
+        const countValue = document.getElementById('countValue');
+        const durationSlider = document.getElementById('durationSlider');
+        const durationValue = document.getElementById('durationValue');
+        const difficultySelect = document.getElementById('difficultySelect');
+        const effectSelect = document.getElementById('effectSelect');
+        const trailCheck = document.getElementById('trailCheck');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const soundBtn = document.getElementById('soundBtn');
+        const menuBtn = document.getElementById('menuBtn');
+
+        // ====================================================================
+        //  AUDIO (Web Audio — сохранён)
+        // ====================================================================
+        let audioCtx = null;
+        let soundEnabled = true;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new(window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playSound(type) {
+            if (!soundEnabled || !audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                if (type === 'hit') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                } else if (type === 'headshot') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.1);
+                } else if (type === 'miss') {
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.15);
+                } else if (type === 'tracking_complete') {
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(1000, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
+                    osc.start();
+                    osc.stop(audioCtx.currentTime + 0.25);
+                }
+            } catch (_) { /* ignore */ }
+        }
+
+        window.toggleSound = function() {
+            soundEnabled = !soundEnabled;
+            soundBtn.textContent = soundEnabled ? 'Звук: Вкл' : 'Звук: Выкл';
+            if (soundEnabled) initAudio();
+        };
+
+        // ====================================================================
+        //  THREE.JS SCENE SETUP
+        // ====================================================================
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0e27);
+
+        const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 200);
+        camera.position.set(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.2;
+        container.prepend(renderer.domElement);
+
+        // Lights
+        const ambientLight = new THREE.AmbientLight(0x334466, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.8);
+        dirLight.position.set(10, 20, 15);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 1024;
+        dirLight.shadow.mapSize.height = 1024;
+        scene.add(dirLight);
+
+        const fillLight = new THREE.DirectionalLight(0x4da6ff, 0.4);
+        fillLight.position.set(-10, 5, -10);
+        scene.add(fillLight);
+
+        const backLight = new THREE.DirectionalLight(0x6688cc, 0.3);
+        backLight.position.set(0, -5, -20);
+        scene.add(backLight);
+
+        // Ground / grid
+        const gridHelper = new THREE.GridHelper(50, 30, 0x1a3a6e, 0x1a3a6e);
+        gridHelper.position.z = -15;
+        gridHelper.position.y = -8;
+        scene.add(gridHelper);
+
+        // Subtle fog
+        scene.fog = new THREE.FogExp2(0x0a0e27, 0.006);
+
+        // ====================================================================
+        //  POINTER LOCK CONTROLS
+        // ====================================================================
+        const controls = new PointerLockControls(camera, renderer.domElement);
+
+        controls.lockSpeed = 0.002;
+
+        controls.addEventListener('lock', () => {
+            lockHint.classList.add('hidden');
+        });
+        controls.addEventListener('unlock', () => {
+            lockHint.classList.remove('hidden');
+        });
+
+        // Click on container to lock
+        container.addEventListener('click', () => {
+            if (!controls.isLocked && gameState !== 'ended' && gameState !== 'idle') {
+                controls.lock();
+                initAudio();
+            } else if (!controls.isLocked && gameState === 'idle') {
+                // allow locking even when idle for convenience
+                controls.lock();
+                initAudio();
+            }
+        });
+
+        // ESC unlocks — handled by PointerLockControls
+
+        // ====================================================================
+        //  RESIZE
+        // ====================================================================
+        function resizeRenderer() {
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+            renderer.setSize(w, h);
+        }
+        window.addEventListener('resize', resizeRenderer);
+
+        // Also resize when panel collapses
+        const panel = document.getElementById('control-panel');
+        const ro = new ResizeObserver(() => resizeRenderer());
+        ro.observe(panel);
+
+        // ====================================================================
+        //  DIFFICULTY MULTIPLIERS
+        // ====================================================================
+        const diffMultipliers = {
+            novice: { size: 1.8, speed: 0.05 },
+            medium: { size: 1.0, speed: 0.06 },
+            expert: { size: 0.65, speed: 0.07 },
+            pro: { size: 0.4, speed: 0.08 }
+        };
+
+        // ====================================================================
+        //  GAME STATE
+        // ====================================================================
+        let gameState = 'idle'; // idle | countdown | playing | paused | ended
+        let gameTime = 60;
+        let score = 0;
+        let hits = 0;
+        let misses = 0;
+        let headshots = 0;
+        let combo = 0;
+        let maxCombo = 0;
+        let fastHits = 0;
+        let lastHitTime = 0;
+        let totalReactionTime = 0;
+        let reactionCount = 0;
+        let clickCount = 0;
+        let totalFlickDistance = 0;
+        let lastMousePos = { x: 0, y: 0 };
+        let animFrameId = null;
+        let menuCollapsed = false;
+
+        // 3D targets
+        let targets3D = [];
+        // 3D effects
+        let effectObjects = [];
+
+        // ====================================================================
+        //  TARGET CLASS (3D)
+        // ====================================================================
+        const TARGET_SPAWN_BOUNDS = {
+            xMin: -18,
+            xMax: 18,
+            yMin: -10,
+            yMax: 10,
+            zMin: -30,
+            zMax: -6
+        };
+
+        class Target3D {
+            constructor() {
+                const mode = modeSelect.value;
+                const baseSize = parseInt(sizeSlider.value);
+                const diff = diffMultipliers[difficultySelect.value];
+                const radius = (baseSize * diff.size) / 2;
+                this.radius = 0.3 + (baseSize * diff.size) / 55;
+                this.headshotRadius = this.radius * 0.45;
+                this.alive = true;
+                this.trackingProgress = 0;
+
+                // Main sphere
+                const geo = new THREE.SphereGeometry(this.radius, 10, 10);
+                const mat = new THREE.MeshStandardMaterial({
+                    color: 0x4da6ff,
+                    emissive: 0x1a3a6e,
+                    emissiveIntensity: 0.3,
+                    metalness: 0.2,
+                    roughness: 0.4,
+                    transparent: true,
+                    opacity: 0.92,
+                });
+                this.mesh = new THREE.Mesh(geo, mat);
+                this.mesh.castShadow = true;
+                this.mesh.receiveShadow = true;
+
+                // Inner headshot zone
+                const hGeo = new THREE.SphereGeometry(this.headshotRadius, 24, 24);
+                const hMat = new THREE.MeshStandardMaterial({
+                    color: 0xffdc50,
+                    emissive: 0xff8800,
+                    emissiveIntensity: 0.15,
+                    transparent: true,
+                    opacity: 0.5,
+                    metalness: 0.1,
+                    roughness: 0.3,
+                });
+                this.headshotMesh = new THREE.Mesh(hGeo, hMat);
+                this.mesh.add(this.headshotMesh);
+
+                // Glow ring (outer)
+                const ringGeo = new THREE.TorusGeometry(this.radius * 1.15, 0.06, 12, 32);
+                const ringMat = new THREE.MeshStandardMaterial({
+                    color: 0x4da6ff,
+                    emissive: 0x4da6ff,
+                    emissiveIntensity: 0.4,
+                    transparent: true,
+                    opacity: 0.6,
+                });
+                this.ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                this.ringMesh.rotation.x = Math.PI / 2;
+                this.mesh.add(this.ringMesh);
+
+                // Tracking ring (progress)
+                const trackGeo = new THREE.TorusGeometry(this.radius * 1.4, 0.08, 12, 48);
+                const trackMat = new THREE.MeshStandardMaterial({
+                    color: 0x00ff66,
+                    emissive: 0x00ff66,
+                    emissiveIntensity: 0.5,
+                    transparent: true,
+                    opacity: 0.0,
+                });
+                this.trackRing = new THREE.Mesh(trackGeo, trackMat);
+                this.trackRing.rotation.x = Math.PI / 2;
+                this.mesh.add(this.trackRing);
+
+                scene.add(this.mesh);
+
+                // Movement
+                this.vx = 0;
+                this.vy = 0;
+                this.vz = 0;
+                this.wobbleTimer = 0;
+                this.spawnTime = performance.now();
+
+                const speed = parseInt(speedSlider.value) * diff.speed;
+                const wobble = parseInt(wobbleSlider.value);
+                this.wobble = wobble;
+
+                if (mode === 'tracking' || mode === 'moving') {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI * 2;
+                    const spd = mode === 'tracking' ? speed * 0.4 : speed * 0.7;
+                    this.vx = Math.cos(theta) * Math.cos(phi) * spd * 0.6;
+                    this.vy = Math.sin(theta) * spd * 0.6;
+                    this.vz = Math.sin(phi) * spd * 0.4;
+                }
+
+                this.spawn();
+            }
+
+            spawn() {
+                let attempts = 0;
+                let pos;
+                let ok;
+                do {
+                    const x = TARGET_SPAWN_BOUNDS.xMin + Math.random() * (TARGET_SPAWN_BOUNDS.xMax - TARGET_SPAWN_BOUNDS
+                    .xMin);
+                    const y = TARGET_SPAWN_BOUNDS.yMin + Math.random() * (TARGET_SPAWN_BOUNDS.yMax - TARGET_SPAWN_BOUNDS
+                    .yMin);
+                    const z = TARGET_SPAWN_BOUNDS.zMin + Math.random() * (TARGET_SPAWN_BOUNDS.zMax - TARGET_SPAWN_BOUNDS
+                    .zMin);
+                    pos = new THREE.Vector3(x, y, z);
+                    ok = true;
+                    // avoid overlap with existing targets
+                    for (const t of targets3D) {
+                        if (t === this) continue;
+                        if (t.mesh.position.distanceTo(pos) < this.radius + t.radius + 2) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    attempts++;
+                } while (!ok && attempts < 60);
+                this.mesh.position.copy(pos);
+                this.mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
+            }
+
+            update(dt) {
+                if (!this.alive) return false;
+                const mode = modeSelect.value;
+
+                if (mode === 'tracking' || mode === 'moving') {
+                    const s = 60 * dt;
+                    this.mesh.position.x += this.vx * s;
+                    this.mesh.position.y += this.vy * s;
+                    this.mesh.position.z += this.vz * s;
+
+                    const b = TARGET_SPAWN_BOUNDS;
+                    const r = this.radius;
+                    if (this.mesh.position.x < b.xMin + r) { this.mesh.position.x = b.xMin + r;
+                        this.vx = Math.abs(this.vx); }
+                    if (this.mesh.position.x > b.xMax - r) { this.mesh.position.x = b.xMax - r;
+                        this.vx = -Math.abs(this.vx); }
+                    if (this.mesh.position.y < b.yMin + r) { this.mesh.position.y = b.yMin + r;
+                        this.vy = Math.abs(this.vy); }
+                    if (this.mesh.position.y > b.yMax - r) { this.mesh.position.y = b.yMax - r;
+                        this.vy = -Math.abs(this.vy); }
+                    if (this.mesh.position.z < b.zMin + r) { this.mesh.position.z = b.zMin + r;
+                        this.vz = Math.abs(this.vz); }
+                    if (this.mesh.position.z > b.zMax - r) { this.mesh.position.z = b.zMax - r;
+                        this.vz = -Math.abs(this.vz); }
+
+                    // wobble
+                    if (this.wobble > 0) {
+                        this.wobbleTimer += dt;
+                        const interval = Math.max(0.4, (11 - this.wobble) * 0.35);
+                        
+                        if (this.wobbleTimer > interval) {
+                            this.wobbleTimer = 0;
+                            const angleH = (Math.random() - 0.5) * this.wobble * 0.5;
+                            const angleV = (Math.random() - 0.5) * this.wobble * 0.3;
+                            
+                            // 1. Вычисляем текущую скорость
+                            let currentSpeed = Math.sqrt(this.vx * this.vx + this.vy * this.vy + this.vz * this.vz);
+                            
+                            // ==========================================
+                            // 2. КОНТРОЛЬ ШАГА СКОРОСТИ (МЕНЯТЬ ЗДЕСЬ)
+                            // ==========================================
+                            // 1.00 = скорость не меняется вообще
+                            // 1.01 = минимальный рост (+1% за каждое вихляние)
+                            // 1.03 = заметный рост (+3% за каждое вихляние)
+                            // 1.05 = агрессивный рост (+5% за каждое вихляние)
+                            const speedGrowthStep = 0.00; // <-- МЕНЯЙТЕ ЭТО ЧИСЛО
+                            
+                            let newSpeed = currentSpeed * speedGrowthStep;
+                            
+                            // 3. АБСОЛЮТНЫЙ ПРЕДЕЛ СКОРОСТИ (чтобы игра не сломалась)
+                            // Если скорость превысит это значение, она перестанет расти
+                            const maxSpeedLimit = 20.0; // <-- МЕНЯЙТЕ ЭТО ЧИСЛО (единиц в секунду)
+                            
+                            if (newSpeed > maxSpeedLimit) {
+                                newSpeed = maxSpeedLimit;
+                            }
+                            // ==========================================
+
+                            if (newSpeed > 0.01) {
+                                const theta = Math.atan2(this.vy, this.vx) + angleH;
+                                const phi = Math.atan2(this.vz, Math.sqrt(this.vx * this.vx + this.vy * this.vy)) + angleV;
+                                
+                                this.vx = Math.cos(theta) * Math.cos(phi) * newSpeed;
+                                this.vy = Math.sin(theta) * newSpeed;
+                                this.vz = Math.sin(phi) * newSpeed;
+                            }
+                        }
+                    }
+                }
+
+                // Tracking progress
+                if (mode === 'tracking') {
+                    const camDir = new THREE.Vector3(0, 0, -1);
+                    camDir.applyQuaternion(camera.quaternion);
+                    const toTarget = new THREE.Vector3().copy(this.mesh.position).sub(camera.position);
+                    const dist = toTarget.length();
+                    const angle = camDir.angleTo(toTarget);
+                    // Check if target is near the crosshair center
+                    const screenPos = this.mesh.position.clone().project(camera);
+                    const dx = screenPos.x;
+                    const dy = screenPos.y;
+                    const crosshairRadius = 0.04; // ~4% of screen
+                    const isOnTarget = Math.abs(dx) < crosshairRadius && Math.abs(dy) < crosshairRadius && dist > 0.5;
+
+                    if (isOnTarget) {
+                        this.trackingProgress = Math.min(this.trackingProgress + dt * 0.45, 1);
+                    } else {
+                        this.trackingProgress = Math.max(this.trackingProgress - dt * 0.25, 0);
+                    }
+
+                    // Update tracking ring
+                    const progress = this.trackingProgress;
+                    this.trackRing.material.opacity = progress > 0.01 ? 0.8 : 0;
+                    this.trackRing.scale.x = 0.5 + progress * 0.5;
+                    this.trackRing.scale.y = 0.5 + progress * 0.5;
+                    this.trackRing.material.color.setHSL(0.3 - progress * 0.3, 1, 0.5);
+
+                    if (progress >= 1) {
+                        return true; // tracking complete
+                    }
+                }
+
+                // Rotation
+                this.mesh.rotation.x += dt * 0.3;
+                this.mesh.rotation.y += dt * 0.5;
+
+                // Ring rotation
+                if (this.ringMesh) {
+                    this.ringMesh.rotation.z += dt * 0.6;
+                }
+
+                return false;
+            }
+
+            setAlive(alive) {
+                this.alive = alive;
+                this.mesh.visible = alive;
+            }
+
+            dispose() {
+                scene.remove(this.mesh);
+                this.mesh.geometry.dispose();
+                if (Array.isArray(this.mesh.material)) {
+                    this.mesh.material.forEach(m => m.dispose());
+                } else {
+                    this.mesh.material.dispose();
+                }
+            }
+        }
+
+        // ====================================================================
+        //  3D EFFECTS SYSTEM
+        // ====================================================================
+        // We store effect objects in a list and update them each frame.
+        // Each effect is an object with { type, mesh, life, maxLife, data }
+
+        function spawnEffect3D(position, type, colorHex) {
+            const color = new THREE.Color(colorHex);
+            const pos = position.clone();
+
+            if (type === 'none') return;
+
+            if (type === 'particles') {
+                const count = 40;
+                const positions = new Float32Array(count * 3);
+                const colors = new Float32Array(count * 3);
+                const velocities = [];
+                const sizes = new Float32Array(count);
+                for (let i = 0; i < count; i++) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI * 2;
+                    const speed = 1 + Math.random() * 5;
+                    positions[i * 3] = pos.x + (Math.random() - 0.5) * 0.5;
+                    positions[i * 3 + 1] = pos.y + (Math.random() - 0.5) * 0.5;
+                    positions[i * 3 + 2] = pos.z + (Math.random() - 0.5) * 0.5;
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                    velocities.push({
+                        x: Math.cos(theta) * Math.cos(phi) * speed,
+                        y: Math.sin(theta) * speed,
+                        z: Math.sin(phi) * speed,
+                    });
+                    sizes[i] = 0.1 + Math.random() * 0.3;
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                const mat = new THREE.PointsMaterial({
+                    size: 0.3,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 1,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    sizeAttenuation: true,
+                });
+                const mesh = new THREE.Points(geo, mat);
+                scene.add(mesh);
+                effectObjects.push({
+                    type: 'particles',
+                    mesh,
+                    life: 1,
+                    maxLife: 1,
+                    velocities,
+                    positions: geo.attributes.position.array,
+                    sizes,
+                    geo,
+                    mat,
+                });
+            } else if (type === 'glow') {
+                const r = 0.5;
+                const geo = new THREE.SphereGeometry(r, 16, 16);
+                const mat = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.7,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                scene.add(mesh);
+                effectObjects.push({
+                    type: 'glow',
+                    mesh,
+                    life: 1,
+                    maxLife: 1,
+                    startScale: 0.5,
+                });
+            } else if (type === 'ring') {
+                const geo = new THREE.RingGeometry(0.1, 0.4, 32);
+                const mat = new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.9,
+                    side: THREE.DoubleSide,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(pos);
+                mesh.lookAt(camera.position);
+                scene.add(mesh);
+                effectObjects.push({
+                    type: 'ring',
+                    mesh,
+                    life: 1,
+                    maxLife: 1,
+                });
+            } else if (type === 'burst') {
+                const count = 16;
+                const positions = new Float32Array(count * 3);
+                const colors = new Float32Array(count * 3);
+                const dirs = [];
+                for (let i = 0; i < count; i++) {
+                    const theta = (i / count) * Math.PI * 2;
+                    const phi = Math.sin(i * 1.7) * 0.8;
+                    const r = 0.3;
+                    positions[i * 3] = pos.x + Math.cos(theta) * Math.cos(phi) * r;
+                    positions[i * 3 + 1] = pos.y + Math.sin(theta) * r;
+                    positions[i * 3 + 2] = pos.z + Math.sin(phi) * r;
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                    dirs.push({ theta, phi });
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                const mat = new THREE.PointsMaterial({
+                    size: 0.3,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 1,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    sizeAttenuation: true,
+                });
+                const mesh = new THREE.Points(geo, mat);
+                scene.add(mesh);
+                effectObjects.push({
+                    type: 'burst',
+                    mesh,
+                    life: 1,
+                    maxLife: 1,
+                    dirs,
+                    positions: geo.attributes.position.array,
+                    geo,
+                    mat,
+                    center: pos.clone(),
+                });
+            } else if (type === 'sparks') {
+                const count = 20;
+                const positions = new Float32Array(count * 3);
+                const colors = new Float32Array(count * 3);
+                const velocities = [];
+                const sizes = new Float32Array(count);
+                for (let i = 0; i < count; i++) {
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.random() * Math.PI * 2;
+                    const speed = 0.5 + Math.random() * 4;
+                    positions[i * 3] = pos.x + (Math.random() - 0.5) * 0.3;
+                    positions[i * 3 + 1] = pos.y + (Math.random() - 0.5) * 0.3;
+                    positions[i * 3 + 2] = pos.z + (Math.random() - 0.5) * 0.3;
+                    colors[i * 3] = color.r;
+                    colors[i * 3 + 1] = color.g;
+                    colors[i * 3 + 2] = color.b;
+                    velocities.push({
+                        x: Math.cos(theta) * Math.cos(phi) * speed,
+                        y: Math.sin(theta) * speed * 0.7 + 0.5,
+                        z: Math.sin(phi) * speed,
+                    });
+                    sizes[i] = 0.05 + Math.random() * 0.15;
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+                const mat = new THREE.PointsMaterial({
+                    size: 0.15,
+                    vertexColors: true,
+                    transparent: true,
+                    opacity: 1,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    sizeAttenuation: true,
+                });
+                const mesh = new THREE.Points(geo, mat);
+                scene.add(mesh);
+                effectObjects.push({
+                    type: 'sparks',
+                    mesh,
+                    life: 1,
+                    maxLife: 1,
+                    velocities,
+                    positions: geo.attributes.position.array,
+                    sizes,
+                    geo,
+                    mat,
+                    gravity: 2.5,
+                });
+            }
+        }
+
+        function updateEffects3D(dt) {
+            for (let i = effectObjects.length - 1; i >= 0; i--) {
+                const e = effectObjects[i];
+                e.life -= dt * (1 / e.maxLife) * 1.2;
+                if (e.life <= 0) {
+                    scene.remove(e.mesh);
+                    e.geo?.dispose();
+                    e.mat?.dispose();
+                    effectObjects.splice(i, 1);
+                    continue;
+                }
+
+                const a = Math.max(0, e.life);
+
+                if (e.type === 'particles') {
+                    const pos = e.positions;
+                    const vel = e.velocities;
+                    for (let j = 0; j < vel.length; j++) {
+                        pos[j * 3] += vel[j].x * dt * 2;
+                        pos[j * 3 + 1] += vel[j].y * dt * 2;
+                        pos[j * 3 + 2] += vel[j].z * dt * 2;
+                        vel[j].y -= 0.3 * dt * 2;
+                    }
+                    e.geo.attributes.position.needsUpdate = true;
+                    e.mat.opacity = a;
+                } else if (e.type === 'glow') {
+                    const s = 1 + (1 - a) * 6;
+                    e.mesh.scale.set(s, s, s);
+                    e.mesh.material.opacity = a * 0.6;
+                } else if (e.type === 'ring') {
+                    const s = 1 + (1 - a) * 4;
+                    e.mesh.scale.set(s, s, s);
+                    e.mesh.material.opacity = a * 0.8;
+                    e.mesh.lookAt(camera.position);
+                } else if (e.type === 'burst') {
+                    const pos = e.positions;
+                    const dirs = e.dirs;
+                    const center = e.center;
+                    const expand = 1 + (1 - a) * 8;
+                    for (let j = 0; j < dirs.length; j++) {
+                        const d = dirs[j];
+                        const r = 0.3 + (1 - a) * 4;
+                        pos[j * 3] = center.x + Math.cos(d.theta) * Math.cos(d.phi) * r * expand;
+                        pos[j * 3 + 1] = center.y + Math.sin(d.theta) * r * expand;
+                        pos[j * 3 + 2] = center.z + Math.sin(d.phi) * r * expand;
+                    }
+                    e.geo.attributes.position.needsUpdate = true;
+                    e.mat.opacity = a;
+                } else if (e.type === 'sparks') {
+                    const pos = e.positions;
+                    const vel = e.velocities;
+                    const grav = e.gravity;
+                    for (let j = 0; j < vel.length; j++) {
+                        pos[j * 3] += vel[j].x * dt * 2;
+                        pos[j * 3 + 1] += vel[j].y * dt * 2;
+                        pos[j * 3 + 2] += vel[j].z * dt * 2;
+                        vel[j].y -= grav * dt * 2;
+                    }
+                    e.geo.attributes.position.needsUpdate = true;
+                    e.mat.opacity = a;
+                }
+            }
+        }
+
+        // ====================================================================
+        //  SHOOTING (Raycaster)
+        // ====================================================================
+        const raycaster = new THREE.Raycaster();
+
+        function shoot() {
+            if (gameState !== 'playing') return;
+            if (!controls.isLocked) return;
+            initAudio();
+            clickCount++;
+
+            const mode = modeSelect.value;
+            if (mode === 'tracking') {
+                // In tracking mode, shooting is done via tracking progress, not clicks
+                return;
+            }
+
+            // Ray from center of screen
+            raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+
+            // Collect all target meshes
+            const meshes = [];
+            const targetMap = new Map();
+            for (const t of targets3D) {
+                if (!t.alive) continue;
+                meshes.push(t.mesh);
+                targetMap.set(t.mesh, t);
+                // also add headshot mesh for separate detection
+                if (t.headshotMesh) {
+                    meshes.push(t.headshotMesh);
+                    targetMap.set(t.headshotMesh, t);
+                }
+            }
+
+            const intersects = raycaster.intersectObjects(meshes, false);
+
+            if (intersects.length > 0) {
+                const hitObj = intersects[0].object;
+                const target = targetMap.get(hitObj);
+                if (target && target.alive) {
+                    const isHeadshot = hitObj === target.headshotMesh;
+                    handleHit3D(target, isHeadshot);
+                    return;
+                }
+            }
+
+            // Miss
+            handleMiss3D();
+        }
+
+        // ====================================================================
+        //  HIT / MISS HANDLERS
+        // ====================================================================
+        function handleHit3D(target, isHeadshot) {
+            const now = performance.now();
+            const reactionTime = now - target.spawnTime;
+            totalReactionTime += reactionTime;
+            reactionCount++;
+
+            if (lastHitTime > 0 && now - lastHitTime < 300) {
+                fastHits++;
+            }
+            lastHitTime = now;
+
+            combo++;
+            if (combo > maxCombo) maxCombo = combo;
+
+            const comboMult = combo >= 5 ? 1 + (combo - 4) * 0.1 : 1;
+            const fastMult = (now - lastHitTime < 300 && lastHitTime > 0) ? 1.5 : 1;
+            const basePoints = isHeadshot ? 20 : 10;
+            const points = Math.round(basePoints * comboMult * fastMult);
+            score += points;
+            hits++;
+            if (isHeadshot) headshots++;
+
+            const color = isHeadshot ? 0xffdc50 : 0x00ff66;
+            const effectType = effectSelect.value;
+
+            // Spawn 3D effect at target position
+            const pos = target.mesh.position.clone();
+            spawnEffect3D(pos, effectType, color);
+
+            playSound(isHeadshot ? 'headshot' : 'hit');
+
+            const mode = modeSelect.value;
+            if (mode === 'gridshot') {
+                target.spawn();
+                target.spawnTime = now;
+                target.trackingProgress = 0;
+            } else if (mode === 'moving') {
+                target.setAlive(false);
+                targets3D = targets3D.filter(t => t.alive);
+                const needed = parseInt(countSlider.value);
+                while (targets3D.length < needed) {
+                    const nt = new Target3D();
+                    nt.spawnTime = now;
+                    targets3D.push(nt);
+                }
+            }
+            updateInfo3D();
+        }
+
+        function handleMiss3D() {
+            combo = 0;
+            misses++;
+            playSound('miss');
+            updateInfo3D();
+        }
+
+        function handleTrackingComplete3D(target) {
+            const now = performance.now();
+            const reactionTime = now - target.spawnTime;
+            totalReactionTime += reactionTime;
+            reactionCount++;
+
+            if (lastHitTime > 0 && now - lastHitTime < 300) {
+                fastHits++;
+            }
+            lastHitTime = now;
+
+            combo++;
+            if (combo > maxCombo) maxCombo = combo;
+
+            const comboMult = combo >= 5 ? 1 + (combo - 4) * 0.1 : 1;
+            const basePoints = 15;
+            const points = Math.round(basePoints * comboMult);
+            score += points;
+            hits++;
+
+            const color = 0x00ff66;
+            const effectType = effectSelect.value;
+            const pos = target.mesh.position.clone();
+            spawnEffect3D(pos, effectType, color);
+
+            playSound('tracking_complete');
+
+            // Reset tracking target
+            target.spawn();
+            target.spawnTime = now;
+            target.trackingProgress = 0;
+            target.setAlive(true);
+            updateInfo3D();
+        }
+
+        // ====================================================================
+        //  UI UPDATE
+        // ====================================================================
+        function updateInfo3D() {
+            const total = hits + misses;
+            const acc = total > 0 ? Math.round(hits / total * 100) : 100;
+            
+            // Timer Logic
+            const minutes = Math.floor(gameTime / 60);
+            const seconds = Math.floor(gameTime % 60);
+            const timerString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+            
+            infoTime.textContent = gameTime.toFixed(1);
+            infoScore.textContent = score;
+            infoAccuracy.textContent = acc + '%';
+            infoCombo.textContent = combo;
+            
+            // Update the new visual timer
+            gameTimerDisplay.textContent = timerString;
+        }
+
+        // ====================================================================
+        //  SPAWN TARGETS
+        // ====================================================================
+        function spawnTargets3D() {
+            // Clear old targets
+            for (const t of targets3D) {
+                t.dispose();
+            }
+            targets3D = [];
+
+            const mode = modeSelect.value;
+            const count = mode === 'tracking' ? 1 : parseInt(countSlider.value);
+            for (let i = 0; i < count; i++) {
+                const t = new Target3D();
+                t.spawnTime = performance.now();
+                targets3D.push(t);
+            }
+        }
+
+        // ====================================================================
+        //  GAME CONTROL
+        // ====================================================================
+        let countdownTimeout = null;
+        let countdownInterval = null;
+
+        function startGame() {
+            if (gameState === 'playing') return;
+            initAudio();
+
+            // Reset stats
+            score = 0;
+            hits = 0;
+            misses = 0;
+            headshots = 0;
+            combo = 0;
+            maxCombo = 0;
+            fastHits = 0;
+            totalReactionTime = 0;
+            reactionCount = 0;
+            clickCount = 0;
+            totalFlickDistance = 0;
+            lastHitTime = 0;
+
+            // Clear effects
+            for (const e of effectObjects) {
+                scene.remove(e.mesh);
+                e.geo?.dispose();
+                e.mat?.dispose();
+            }
+            effectObjects = [];
+
+            gameTime = parseInt(durationSlider.value);
+
+            // Collapse panel
+            panel.classList.add('collapsed');
+            document.getElementById('section1').classList.add('hidden');
+            document.getElementById('section2').classList.add('hidden');
+            document.getElementById('section3').classList.add('hidden');
+            menuCollapsed = true;
+            menuBtn.textContent = 'Меню';
+            resizeRenderer();
+
+            spawnTargets3D();
+
+            // Show the new timer
+            gameTimerDisplay.classList.remove('hidden');
+
+            // Lock pointer if not locked
+            if (!controls.isLocked) {
+                controls.lock();
+            }
+
+            gameState = 'countdown';
+            let cd = 3;
+            countdownOverlay.classList.add('show');
+            countdownText.textContent = cd;
+
+            function doCountdown() {
+                if (cd > 0) {
+                    countdownText.textContent = cd;
+                    countdownText.style.animation = 'none';
+                    void countdownText.offsetHeight;
+                    countdownText.style.animation = 'pulse 0.5s ease';
+                    cd--;
+                    countdownTimeout = setTimeout(doCountdown, 800);
+                } else {
+                    countdownText.textContent = 'GO!';
+                    countdownText.style.animation = 'none';
+                    void countdownText.offsetHeight;
+                    countdownText.style.animation = 'pulse 0.3s ease';
+                    countdownTimeout = setTimeout(() => {
+                        countdownOverlay.classList.remove('show');
+                        gameState = 'playing';
+                        lastFrameTime = 0;
+                        updateInfo3D();
+                        if (animFrameId) cancelAnimationFrame(animFrameId);
+                        animFrameId = requestAnimationFrame(gameLoop);
+                    }, 500);
+                }
+            }
+            doCountdown();
+        }
+
+        function stopGame() {
+            gameState = 'idle';
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            if (countdownTimeout) clearTimeout(countdownTimeout);
+            countdownOverlay.classList.remove('show');
+            statsOverlay.classList.remove('show');
+
+            // Hide the new timer
+            gameTimerDisplay.classList.add('hidden');
+
+            for (const t of targets3D) t.dispose();
+            targets3D = [];
+            for (const e of effectObjects) {
+                scene.remove(e.mesh);
+                e.geo?.dispose();
+                e.mat?.dispose();
+            }
+            effectObjects = [];
+
+            // Show panel
+            panel.classList.remove('collapsed');
+            document.getElementById('section1').classList.remove('hidden');
+            document.getElementById('section2').classList.remove('hidden');
+            document.getElementById('section3').classList.remove('hidden');
+            menuCollapsed = false;
+            menuBtn.textContent = 'Скрыть';
+            resizeRenderer();
+
+            updateInfo3D();
+            pauseBtn.textContent = 'Пауза';
+        }
+
+        function togglePause() {
+            if (gameState === 'playing') {
+                gameState = 'paused';
+                pauseBtn.textContent = 'Продолжить';
+                if (animFrameId) cancelAnimationFrame(animFrameId);
+            } else if (gameState === 'paused') {
+                gameState = 'playing';
+                pauseBtn.textContent = 'Пауза';
+                lastFrameTime = 0;
+                if (animFrameId) cancelAnimationFrame(animFrameId);
+                animFrameId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function endGame() {
+            gameState = 'ended';
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            showStats3D();
+        }
+
+        function showStats3D() {
+            const total = hits + misses;
+            const accuracy = total > 0 ? (hits / total * 100).toFixed(1) : 0;
+            const duration = parseInt(durationSlider.value);
+            const cpm = (clickCount / duration * 60).toFixed(1);
+            const avgReaction = reactionCount > 0 ? (totalReactionTime / reactionCount).toFixed(0) : 0;
+            const headshotPct = hits > 0 ? (headshots / hits * 100).toFixed(1) : 0;
+            const avgFlick = hits > 0 ? (totalFlickDistance / hits).toFixed(1) : 0;
+
+            let rankScore = 0;
+            if (hits > 0) {
+                rankScore += parseFloat(accuracy) * 0.3;
+                rankScore += Math.min(hits / duration * 10, 30);
+                rankScore += parseFloat(headshotPct) * 0.2;
+                rankScore += Math.min(maxCombo * 2, 20);
+                rankScore = Math.min(100, Math.max(0, rankScore));
+            }
+
+            let rank, rankEmoji;
+            if (rankScore >= 90) { rank = 'ЛЕГЕНДА';
+                rankEmoji = '👑'; } else if (rankScore >= 70) { rank = 'МАСТЕР';
+                rankEmoji = '💎'; } else if (rankScore >= 50) { rank = 'ОТЛИЧНО';
+                rankEmoji = '⭐'; } else if (rankScore >= 30) { rank = 'ХОРОШО';
+                rankEmoji = '✅'; } else { rank = 'ТРЕНИРУЙСЯ';
+                rankEmoji = '📈'; }
+
+            const stats = [
+                { label: 'Счет', value: score },
+                { label: 'Точность', value: accuracy + '%' },
+                { label: 'Попадания', value: hits },
+                { label: 'Промахи', value: misses },
+                { label: 'Темп/мин', value: cpm },
+                { label: 'Ср. реакция', value: avgReaction + 'мс' },
+                { label: 'Быстрые', value: fastHits },
+                { label: 'Headshots %', value: headshotPct + '%' },
+                { label: 'Макс серия', value: maxCombo },
+                { label: 'Ср. дистанция', value: avgFlick + 'px' }
+            ];
+
+            statsGrid.innerHTML = stats.map(s => `
+                <div class="stat-card">
+                    <div class="stat-label">${s.label}</div>
+                    <div class="stat-value">${s.value}</div>
+                </div>
+            `).join('');
+
+            rankDisplay.innerHTML = `
+                <div class="rank-title">Ранг</div>
+                <div>${rankEmoji} ${rank}</div>
+                <div style="font-size:16px;color:#7aa8e0;margin-top:4px;">${rankScore.toFixed(0)} баллов</div>
+            `;
+
+            statsOverlay.classList.add('show');
+
+            // Show panel
+            panel.classList.remove('collapsed');
+            document.getElementById('section1').classList.remove('hidden');
+            document.getElementById('section2').classList.remove('hidden');
+            document.getElementById('section3').classList.remove('hidden');
+            menuCollapsed = false;
+            menuBtn.textContent = 'Скрыть';
+            resizeRenderer();
+        }
+
+        window.closeStats = function() {
+            statsOverlay.classList.remove('show');
+            stopGame();
+        };
+
+        // ====================================================================
+        //  GAME LOOP
+        // ====================================================================
+        let lastFrameTime = 0;
+
+        function gameLoop(timestamp) {
+            if (gameState !== 'playing' && gameState !== 'paused') {
+                if (gameState === 'ended') return;
+                // if idle, just render
+                renderer.render(scene, camera);
+                animFrameId = requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            if (!lastFrameTime) lastFrameTime = timestamp;
+            const dt = Math.min((timestamp - lastFrameTime) / 1000, 0.05);
+            lastFrameTime = timestamp;
+
+            if (gameState === 'playing') {
+                gameTime -= dt;
+                if (gameTime <= 0) {
+                    gameTime = 0;
+                    endGame();
+                    renderer.render(scene, camera);
+                    return;
+                }
+
+                // Update targets
+                for (const t of targets3D) {
+                    if (!t.alive) continue;
+                    const completed = t.update(dt);
+                    if (completed && modeSelect.value === 'tracking') {
+                        handleTrackingComplete3D(t);
+                    }
+                }
+
+                // Update effects
+                updateEffects3D(dt);
+
+                // Update UI
+                updateInfo3D();
+            }
+
+            // Render
+            renderer.render(scene, camera);
+            animFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // ====================================================================
+        //  UI BINDINGS (sliders, selects, etc.)
+        // ====================================================================
+        ['size', 'speed', 'wobble', 'count', 'duration'].forEach(id => {
+            const slider = document.getElementById(id + 'Slider');
+            const value = document.getElementById(id + 'Value');
+            slider.addEventListener('input', () => {
+                value.textContent = slider.value;
+            });
+        });
+
+        modeSelect.addEventListener('change', function() {
+            const mode = this.value;
+            const wobbleRow = document.getElementById('wobbleRow');
+            const countRow = document.getElementById('countRow');
+            if (mode === 'moving' || mode === 'tracking') {
+                wobbleRow.style.display = 'flex';
+            } else {
+                wobbleRow.style.display = 'none';
+            }
+            if (mode === 'tracking') {
+                countRow.style.display = 'none';
+            } else {
+                countRow.style.display = 'flex';
+            }
+        });
+        modeSelect.dispatchEvent(new Event('change'));
+
+        // ====================================================================
+        //  FULLSCREEN
+        // ====================================================================
+        window.toggleFullscreen = function() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        };
+
+        // ====================================================================
+        //  MENU TOGGLE
+        // ====================================================================
+        window.toggleMenu = function() {
+            menuCollapsed = !menuCollapsed;
+            const s1 = document.getElementById('section1');
+            const s2 = document.getElementById('section2');
+            const s3 = document.getElementById('section3');
+            if (menuCollapsed) {
+                panel.classList.add('collapsed');
+                s1.classList.add('hidden');
+                s2.classList.add('hidden');
+                s3.classList.add('hidden');
+                menuBtn.textContent = 'Меню';
+            } else {
+                panel.classList.remove('collapsed');
+                s1.classList.remove('hidden');
+                s2.classList.remove('hidden');
+                s3.classList.remove('hidden');
+                menuBtn.textContent = 'Скрыть';
+            }
+            resizeRenderer();
+        };
+
+        // ====================================================================
+        //  EXPOSE GAME FUNCTIONS TO GLOBAL (for inline onclick)
+        // ====================================================================
+        window.startGame = startGame;
+        window.stopGame = stopGame;
+        window.togglePause = togglePause;
+        window.toggleFullscreen = toggleFullscreen;
+        window.toggleSound = toggleSound;
+        window.toggleMenu = toggleMenu;
+        window.closeStats = closeStats;
+
+        // ====================================================================
+        //  SHOOTING EVENT (click when pointer locked)
+        // ====================================================================
+        document.addEventListener('click', (e) => {
+            if (controls.isLocked) {
+                shoot();
+            }
+        });
+
+        // Mouse move for flick distance
+        document.addEventListener('mousemove', (e) => {
+            if (controls.isLocked) {
+                const dx = e.movementX || 0;
+                const dy = e.movementY || 0;
+                totalFlickDistance += Math.sqrt(dx * dx + dy * dy);
+            }
+        });
+
+        // ====================================================================
+        //  INITIAL RENDER
+        // ====================================================================
+        // Start idle loop
+        animFrameId = requestAnimationFrame(gameLoop);
+
+        // Show lock hint
+        lockHint.classList.remove('hidden');
+
+        console.log('3D Aim Trainer запущен. Кликните по экрану для захвата мыши.');
+        console.log('Режимы: GridShot, Tracking, Moving. Управление: мышь + ЛКМ.');
+    </script>
+</body>
+</html>
