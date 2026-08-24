@@ -531,9 +531,15 @@
         let trailsEnabled = false;
         const maxTrailPoints = 20;
         const trailUpdateInterval = 0.03;
+        let trailScreenPoints = []; // Screen-space trail points
 
         function updateTrailSystem() {
             trailsEnabled = trailCheck.checked;
+            if (!trailsEnabled) {
+                trailPoints = [];
+                trailScreenPoints = [];
+                trailTimer = 0;
+            }
         }
 
         trailCheck.addEventListener('change', updateTrailSystem);
@@ -1665,26 +1671,37 @@
                     return;
                 }
 
-                // Update trails
+                // Update trails (screen-space cursor trail)
                 if (trailsEnabled && controls.isLocked) {
                     trailTimer += dt;
                     if (trailTimer >= trailUpdateInterval) {
                         trailTimer = 0;
-                        const pos = camera.position.clone();
-                        const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-                        trailPoints.push({ position: pos, direction: dir, age: 0 });
-                        if (trailPoints.length > maxTrailPoints) {
-                            trailPoints.shift();
+                        // Get center of screen in normalized device coordinates
+                        const ndc = new THREE.Vector3(0, 0, 0.5);
+                        ndc.unproject(camera);
+                        const dist = ndc.distanceTo(camera.position);
+                        const worldPos = camera.position.clone().add(
+                            new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(dist)
+                        );
+                        
+                        // Project to screen space for consistent 2D trail
+                        const screenPos = worldPos.clone().project(camera);
+                        screenPos.x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
+                        screenPos.y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
+                        
+                        trailScreenPoints.push({ x: screenPos.x, y: screenPos.y, age: 0 });
+                        if (trailScreenPoints.length > maxTrailPoints) {
+                            trailScreenPoints.shift();
                         }
                     }
-                    for (let i = trailPoints.length - 1; i >= 0; i--) {
-                        trailPoints[i].age += dt;
-                        if (trailPoints[i].age > 0.5) {
-                            trailPoints.splice(i, 1);
+                    for (let i = trailScreenPoints.length - 1; i >= 0; i--) {
+                        trailScreenPoints[i].age += dt;
+                        if (trailScreenPoints[i].age > 0.5) {
+                            trailScreenPoints.splice(i, 1);
                         }
                     }
-                } else if (!trailsEnabled && trailPoints.length > 0) {
-                    trailPoints = [];
+                } else if (!trailsEnabled && trailScreenPoints.length > 0) {
+                    trailScreenPoints = [];
                 }
 
                 // Update targets
@@ -1706,28 +1723,37 @@
                 cleanupTrailLines();
             }
 
-            // Render trails
-            if (trailsEnabled && trailPoints.length > 0) {
-                for (let i = 0; i < trailPoints.length - 1; i++) {
-                    const point = trailPoints[i];
-                    const nextPoint = trailPoints[i + 1];
-                    const alpha = 1 - (point.age / 0.5);
-                    const lineGeo = new THREE.BufferGeometry().setFromPoints([point.position, nextPoint.position]);
-                    const lineMat = new THREE.LineBasicMaterial({
-                        color: 0x00ff66,
-                        opacity: alpha * 0.6,
-                        transparent: true,
-                        depthWrite: false,
-                    });
-                    const line = new THREE.Line(lineGeo, lineMat);
-                    scene.add(line);
-                    effectObjects.push({
-                        type: 'trail_line',
-                        mesh: line,
-                        geo: lineGeo,
-                        mat: lineMat,
-                    });
+            // Render trails (screen-space overlay)
+            if (trailsEnabled && trailScreenPoints.length > 1) {
+                const canvas = document.createElement('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.globalCompositeOperation = 'lighter';
+                
+                for (let i = 0; i < trailScreenPoints.length - 1; i++) {
+                    const point = trailScreenPoints[i];
+                    const nextPoint = trailScreenPoints[i + 1];
+                    const alpha = (1 - (point.age / 0.5)) * 0.8;
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(point.x, point.y);
+                    ctx.lineTo(nextPoint.x, nextPoint.y);
+                    ctx.strokeStyle = `rgba(0, 255, 102, ${alpha})`;
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.stroke();
                 }
+                
+                canvas.style.position = 'absolute';
+                canvas.style.top = '0';
+                canvas.style.left = '0';
+                canvas.style.pointerEvents = 'none';
+                canvas.style.zIndex = '25';
+                container.appendChild(canvas);
+                
+                // Remove after rendering
+                setTimeout(() => canvas.remove(), 50);
             }
 
             // Render
