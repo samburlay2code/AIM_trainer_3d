@@ -443,10 +443,6 @@
                     <option value="none">None</option>
                 </select>
             </div>
-            <div class="panel-row">
-                <label>Trail</label>
-                <input type="checkbox" id="trailCheck" />
-            </div>
         </div>
 
         <div class="panel-section" id="section3">
@@ -518,31 +514,11 @@
         const durationValue = document.getElementById('durationValue');
         const difficultySelect = document.getElementById('difficultySelect');
         const effectSelect = document.getElementById('effectSelect');
-        const trailCheck = document.getElementById('trailCheck');
         const startBtn = document.getElementById('startBtn');
         const stopBtn = document.getElementById('stopBtn');
         const pauseBtn = document.getElementById('pauseBtn');
         const soundBtn = document.getElementById('soundBtn');
         const menuBtn = document.getElementById('menuBtn');
-
-        // ====================================================================
-        //  TRAIL SYSTEM
-        // ====================================================================
-        let trailsEnabled = false;
-        const maxTrailPoints = 20;
-        const trailUpdateInterval = 0.03;
-        let trailScreenPoints = []; // Screen-space trail points
-
-        function updateTrailSystem() {
-            trailsEnabled = trailCheck.checked;
-            if (!trailsEnabled) {
-                trailPoints = [];
-                trailScreenPoints = [];
-                trailTimer = 0;
-            }
-        }
-
-        trailCheck.addEventListener('change', updateTrailSystem);
 
         // ====================================================================
         //  AUDIO (Web Audio — сохранён)
@@ -727,9 +703,6 @@
         let targets3D = [];
         // 3D effects
         let effectObjects = [];
-        // Trail system
-        let trailPoints = [];
-        let trailTimer = 0;
 
         // ====================================================================
         //  TARGET CLASS (3D)
@@ -1466,8 +1439,6 @@
                 e.mat?.dispose();
             }
             effectObjects = [];
-            trailPoints = [];
-            trailTimer = 0;
 
             gameTime = parseInt(durationSlider.value);
 
@@ -1539,8 +1510,6 @@
                 e.mat?.dispose();
             }
             effectObjects = [];
-            trailPoints = [];
-            trailTimer = 0;
 
             // Show panel
             panel.classList.remove('collapsed');
@@ -1671,39 +1640,6 @@
                     return;
                 }
 
-                // Update trails (screen-space cursor trail)
-                if (trailsEnabled && controls.isLocked) {
-                    trailTimer += dt;
-                    if (trailTimer >= trailUpdateInterval) {
-                        trailTimer = 0;
-                        // Get center of screen in normalized device coordinates
-                        const ndc = new THREE.Vector3(0, 0, 0.5);
-                        ndc.unproject(camera);
-                        const dist = ndc.distanceTo(camera.position);
-                        const worldPos = camera.position.clone().add(
-                            new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).multiplyScalar(dist)
-                        );
-                        
-                        // Project to screen space for consistent 2D trail
-                        const screenPos = worldPos.clone().project(camera);
-                        screenPos.x = (screenPos.x * 0.5 + 0.5) * window.innerWidth;
-                        screenPos.y = (-screenPos.y * 0.5 + 0.5) * window.innerHeight;
-                        
-                        trailScreenPoints.push({ x: screenPos.x, y: screenPos.y, age: 0 });
-                        if (trailScreenPoints.length > maxTrailPoints) {
-                            trailScreenPoints.shift();
-                        }
-                    }
-                    for (let i = trailScreenPoints.length - 1; i >= 0; i--) {
-                        trailScreenPoints[i].age += dt;
-                        if (trailScreenPoints[i].age > 0.5) {
-                            trailScreenPoints.splice(i, 1);
-                        }
-                    }
-                } else if (!trailsEnabled && trailScreenPoints.length > 0) {
-                    trailScreenPoints = [];
-                }
-
                 // Update targets
                 for (const t of targets3D) {
                     if (!t.alive) continue;
@@ -1718,60 +1654,11 @@
 
                 // Update UI
                 updateInfo3D();
-
-                // Cleanup old trail lines before rendering new ones
-                cleanupTrailLines();
-            }
-
-            // Render trails (screen-space overlay)
-            if (trailsEnabled && trailScreenPoints.length > 1) {
-                const canvas = document.createElement('canvas');
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-                const ctx = canvas.getContext('2d');
-                ctx.globalCompositeOperation = 'lighter';
-                
-                for (let i = 0; i < trailScreenPoints.length - 1; i++) {
-                    const point = trailScreenPoints[i];
-                    const nextPoint = trailScreenPoints[i + 1];
-                    const alpha = (1 - (point.age / 0.5)) * 0.8;
-                    
-                    ctx.beginPath();
-                    ctx.moveTo(point.x, point.y);
-                    ctx.lineTo(nextPoint.x, nextPoint.y);
-                    ctx.strokeStyle = `rgba(0, 255, 102, ${alpha})`;
-                    ctx.lineWidth = 3;
-                    ctx.lineCap = 'round';
-                    ctx.stroke();
-                }
-                
-                canvas.style.position = 'absolute';
-                canvas.style.top = '0';
-                canvas.style.left = '0';
-                canvas.style.pointerEvents = 'none';
-                canvas.style.zIndex = '25';
-                container.appendChild(canvas);
-                
-                // Remove after rendering
-                setTimeout(() => canvas.remove(), 50);
             }
 
             // Render
             renderer.render(scene, camera);
             animFrameId = requestAnimationFrame(gameLoop);
-        }
-
-        // Clean up trail lines from effectObjects
-        function cleanupTrailLines() {
-            for (let i = effectObjects.length - 1; i >= 0; i--) {
-                const e = effectObjects[i];
-                if (e.type === 'trail_line') {
-                    scene.remove(e.mesh);
-                    e.geo?.dispose();
-                    e.mat?.dispose();
-                    effectObjects.splice(i, 1);
-                }
-            }
         }
 
         // ====================================================================
